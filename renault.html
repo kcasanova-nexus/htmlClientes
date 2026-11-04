@@ -49,7 +49,7 @@ td.estado-pagado{background:var(--green2)!important;color:#fff!important;text-al
 <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-const SHEET_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vSyi-eVQI41Qf2eqrW_gAY-l_uU7hgZbmR_IkGY_kvkWFh7gdmNx8V_7vTVTiW-5x2xyCM6xTSDOr4R/pub?gid=240735274&single=true&output=tsv";
+const SHEET_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vRIBn-MQTVJNNbgutD6dJQ1aR4wT-1VZh4P4tBPZZNP0dcAbnccV2SkOS-VZuHtfgmuNGCkvE4q9Hr1/pub?gid=240735274&single=true&output=tsv";
 function noCache(u){return u+(u.includes("?")?"&":"?")+"cacheBust="+Date.now()}
 function limpiarNumero(v){if(!v)return 0;let t=String(v).replace("₡","").replace(/\s/g,"").replace("−","-");if(t.includes(",")&&t.includes("."))t=t.replace(/\./g,"").replace(",",".");else t=t.replace(",",".");return parseFloat(t.replace(/[^0-9.\-]/g,""))||0}
 function textoFila(r){return r.map(c=>String(c||"").trim()).join(" ").toLowerCase()}
