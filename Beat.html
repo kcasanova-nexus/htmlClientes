@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resumen de Semana - BEAT</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+  <style>
+    body { margin:0; background:#121212; color:#f0f0f0; font-family:Arial, Helvetica, sans-serif; font-size:13px; }
+    .container { max-width:1500px; margin:0 auto; padding:24px 28px; }
+    h1 { text-align:center; color:#58c45f; margin:14px 0 26px; font-size:28px; font-weight:700; }
+    #resumen { background:#1f1f1f; border:1px solid #3a3a3a; border-radius:8px; padding:24px 18px; margin-bottom:24px; min-height:170px; box-sizing:border-box; }
+    #resumen p { margin:0 0 12px; font-size:14px; font-weight:700; }
+    .positivo { color:#00e676; font-weight:800; }
+    .negativo { color:#ff5252; font-weight:800; }
+    #loading { text-align:center; color:#aaa; margin:20px 0; font-size:16px; }
+    .table-wrap { overflow-x:auto; }
+    table.dataTable { width:100% !important; background:#1e1e1e; color:#f0f0f0; border-collapse:collapse; border:1px solid #444; font-size:13px; }
+    table.dataTable th, table.dataTable td { white-space:nowrap; padding:10px 12px; border-bottom:1px solid #2a2a2a; }
+    table.dataTable th { background:#333; color:#fff; font-weight:700; }
+    table.dataTable td { background:#1e1e1e; }
+    tr.fila-separadora td { background:#101010 !important; color:#58c45f !important; text-align:center !important; font-weight:800 !important; font-size:15px !important; letter-spacing:0.3px; border-top:2px solid #58c45f !important; border-bottom:2px solid #58c45f !important; padding:14px 12px !important; }
+    .dataTables_wrapper, .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_paginate { color:#fff !important; }
+    .dataTables_wrapper .dataTables_filter input, .dataTables_wrapper .dataTables_length select { background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:6px; }
+    .dataTables_wrapper .dataTables_paginate .paginate_button { color:#fff !important; border:1px solid #444 !important; background:#1f1f1f !important; border-radius:4px; margin:2px; }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current { background:#3c7d40 !important; color:#fff !important; }
+    td.estado-pagado { background:#3b6f35 !important; color:#ffffff !important; font-weight:700; }
+    @media (max-width:768px) { .container { padding:16px 10px; } h1 { font-size:22px; } table.dataTable { font-size:12px; } table.dataTable th, table.dataTable td { padding:8px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Resumen de Semana - BEAT</h1>
+    <div id="resumen">
+      <p><strong id="semana_linea"></strong></p>
+      <p><strong>Ganancias Totales:</strong> <span id="ganancia"></span></p>
+      <p><strong>Reembolsos:</strong> <span id="reembolso"></span></p>
+      <p><strong>Efectivo:</strong> <span id="efectivo"></span></p>
+      <p><strong>Cuota:</strong> <span id="cuota"></span></p>
+      <p><strong>Saldo Semana:</strong> <span id="saldo"></span></p>
+    </div>
+    <div id="loading">Cargando datos desde Google Sheets...</div>
+    <div class="table-wrap">
+      <table id="tablaPagos" class="display" style="display:none;"></table>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <script>
+    const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRIBn-MQTVJNNbgutD6dJQ1aR4wT-1VZh4P4tBPZZNP0dcAbnccV2SkOS-VZuHtfgmuNGCkvE4q9Hr1/pub?gid=769045157&single=true&output=tsv";
+
+    function urlSinCache(url) {
+      const separador = url.includes("?") ? "&" : "?";
+      return url + separador + "cacheBust=" + Date.now();
+    }
+
+    function limpiarNumero(valor) {
+      if (!valor) return 0;
+      return parseFloat(
+        String(valor)
+          .replace("₡", "")
+          .replace(/\s/g, "")
+          .replace(/,/g, ".")
+          .replace("−", "-")
+          .replace(/[^0-9.\-]/g, "")
+      ) || 0;
+    }
+
+    function esFilaSeparadora(row) {
+      const texto = row.map(cell => String(cell || "").trim()).join(" ").toLowerCase();
+      return texto.includes("financiamiento opcional") || texto.includes("semanas atrasadas");
+    }
+
+    function textoSeparador(row) {
+      const texto = row.map(cell => String(cell || "").trim()).join(" ").toLowerCase();
+      if (texto.includes("financiamiento opcional")) return "Financiamiento opcional";
+      if (texto.includes("semanas atrasadas")) return "Semanas atrasadas";
+      return "";
+    }
+
+    async function cargarDatos() {
+      try {
+        const response = await fetch(urlSinCache(SHEET_URL), { cache: "no-store" });
+        const tsv = await response.text();
+
+        Papa.parse(tsv, {
+          delimiter: "\t",
+          header: false,
+          skipEmptyLines: true,
+          complete: function(results) {
+            const data = results.data.filter(row => row.some(cell => String(cell || "").trim() !== ""));
+
+            const labels = data.map(row => String(row[0] || "").trim());
+            const vals = data.map(row => String(row[1] || "").trim());
+
+            const semanaIndex = labels.findIndex(x => x.toLowerCase() === "semana #" || x.toLowerCase() === "semana");
+            if (semanaIndex !== -1) {
+              document.getElementById("semana_linea").innerText = "Semana #" + vals[semanaIndex];
+            }
+
+            const totalIndex = labels.findIndex(x => x.toLowerCase() === "ganancias totales");
+            if (totalIndex !== -1) {
+              document.getElementById("ganancia").innerText = vals[totalIndex] || "";
+              document.getElementById("reembolso").innerText = vals[totalIndex + 1] || "";
+              document.getElementById("efectivo").innerText = vals[totalIndex + 2] || "";
+              document.getElementById("cuota").innerText = vals[totalIndex + 3] || "";
+
+              const saldoTexto = vals[totalIndex + 4] || "";
+              const saldoNumero = limpiarNumero(saldoTexto);
+
+              document.getElementById("saldo").innerText = saldoTexto;
+              document.getElementById("saldo").className = saldoNumero >= 0 ? "positivo" : "negativo";
+            }
+
+            const headerIndex = data.findIndex(row =>
+              row.some(cell => String(cell || "").trim().toLowerCase() === "semana") &&
+              row.some(cell => String(cell || "").trim().toLowerCase() === "fecha")
+            );
+
+            if (headerIndex === -1) {
+              throw new Error("No se encontró el encabezado de la tabla.");
+            }
+
+            const headers = data[headerIndex].map(h => String(h || "").trim());
+            const rows = data
+              .slice(headerIndex + 1)
+              .filter(row => row.length && String(row[0] || "").trim() !== "")
+              .map(row => {
+                const fila = [...row];
+                while (fila.length < headers.length) fila.push("");
+                return fila.slice(0, headers.length);
+              });
+
+            $('#tablaPagos').DataTable({
+              data: rows,
+              columns: headers.map(h => ({ title: h })),
+              pageLength: 20,
+              paging: true,
+              searching: true,
+              ordering: false,
+              fixedHeader: true,
+              language: {
+                search: "Buscar semana:",
+                lengthMenu: "Show _MENU_ entries",
+                zeroRecords: "No se encontró nada",
+                info: "Mostrando _TOTAL_ registros",
+                infoEmpty: "No hay registros",
+                infoFiltered: "(filtrado de _MAX_ totales)",
+                paginate: { previous: "Anterior", next: "Siguiente" }
+              },
+              createdRow: function(row, rowData) {
+                const estadoIndex = headers.findIndex(h => h.toLowerCase() === "estado");
+
+                if (esFilaSeparadora(rowData)) {
+                  $(row).addClass("fila-separadora");
+                  const cells = $('td', row);
+                  cells.eq(0).attr('colspan', headers.length).text(textoSeparador(rowData));
+                  cells.slice(1).remove();
+                  return;
+                }
+
+                if (estadoIndex !== -1) {
+                  const estado = String(rowData[estadoIndex] || "").trim().toLowerCase();
+                  if (estado === "pagado") {
+                    $('td', row).eq(estadoIndex).addClass('estado-pagado');
+                  }
+                }
+              }
+            });
+
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("tablaPagos").style.display = "table";
+          }
+        });
+      } catch (error) {
+        document.getElementById("loading").innerText = "Error al cargar los datos. Revisa el link TSV o la estructura de la hoja.";
+        console.error(error);
+      }
+    }
+
+    cargarDatos();
+  </script>
+</body>
+</html>
